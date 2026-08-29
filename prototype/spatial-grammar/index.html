@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>codex-village spatial grammar prototype</title>
+  <style>
+    /* PROTOTYPE ONLY: three spatial grammars for the codex-village world. */
+    :root {
+      --ink: #211b2f;
+      --paper: #f5e9c8;
+      --grass: #4d8963;
+      --grass-dark: #326047;
+      --water: #4e9bb1;
+      --cream: #fff4ce;
+      --gold: #f2bf4a;
+      --red: #d95a4e;
+      --purple: #7659a9;
+      --blue: #4c78b8;
+      --shadow: 0 4px 0 rgba(33, 27, 47, .5);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      color: var(--ink);
+      background: #171422;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body { margin: 0; min-height: 100%; }
+
+    body {
+      min-height: 100vh;
+      padding: 18px 18px 88px;
+      overflow-x: hidden;
+      background:
+        linear-gradient(135deg, rgba(255,255,255,.04) 25%, transparent 25%) 0 0 / 8px 8px,
+        #171422;
+    }
+
+    .shell {
+      width: min(1100px, 100%);
+      margin: auto;
+    }
+
+    .topline {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin: 0 0 12px;
+      color: var(--cream);
+      font-size: 12px;
+      letter-spacing: .05em;
+    }
+
+    .topline strong { color: var(--gold); }
+
+    .prototype-tag {
+      padding: 4px 7px;
+      color: var(--ink);
+      background: var(--gold);
+      box-shadow: 3px 3px 0 #8b5b2c;
+      font-size: 10px;
+      font-weight: 800;
+    }
+
+    .world {
+      position: relative;
+      min-height: min(69vw, 610px);
+      overflow: hidden;
+      border: 8px solid var(--ink);
+      background-color: var(--grass);
+      box-shadow: 8px 8px 0 #0b0911;
+      image-rendering: pixelated;
+    }
+
+    .world::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      opacity: .18;
+      pointer-events: none;
+      background:
+        linear-gradient(90deg, transparent 49%, rgba(255,255,255,.18) 50%, transparent 51%) 0 0 / 28px 28px,
+        linear-gradient(0deg, transparent 49%, rgba(255,255,255,.13) 50%, transparent 51%) 0 0 / 28px 28px;
+    }
+
+    .hud, .hint, .card, .district-label {
+      position: absolute;
+      z-index: 5;
+      border: 4px solid var(--ink);
+      box-shadow: var(--shadow);
+      background: var(--cream);
+    }
+
+    .hud {
+      top: 14px;
+      left: 14px;
+      padding: 7px 9px;
+      font-size: 11px;
+      line-height: 1.55;
+    }
+
+    .hud b { color: var(--purple); }
+    .hud .dot { color: #278649; }
+
+    .hint {
+      right: 14px;
+      bottom: 14px;
+      max-width: 265px;
+      padding: 7px 9px;
+      font-size: 10px;
+      line-height: 1.45;
+    }
+
+    .path {
+      position: absolute;
+      z-index: 1;
+      transform-origin: left center;
+      border-top: 4px dashed rgba(255, 244, 206, .92);
+      filter: drop-shadow(2px 2px 0 rgba(33,27,47,.42));
+    }
+
+    .path::after {
+      content: "";
+      position: absolute;
+      right: -1px;
+      top: -8px;
+      border: 6px solid transparent;
+      border-left: 9px solid var(--cream);
+    }
+
+    .building {
+      position: absolute;
+      z-index: 2;
+      display: grid;
+      place-items: end center;
+      border: 5px solid var(--ink);
+      background: var(--purple);
+      box-shadow: 5px 5px 0 rgba(33,27,47,.48);
+    }
+
+    .building::before {
+      content: "";
+      width: 45%;
+      height: 45%;
+      margin-bottom: 12%;
+      border: 4px solid var(--ink);
+      background: var(--gold);
+    }
+
+    .building::after {
+      content: "";
+      position: absolute;
+      bottom: -12px;
+      width: 76%;
+      height: 8px;
+      background: var(--ink);
+    }
+
+    .hq {
+      left: 42%;
+      top: 39%;
+      width: 17%;
+      height: 18%;
+      background: var(--red);
+    }
+
+    .unit {
+      position: absolute;
+      z-index: 4;
+      width: 44px;
+      text-align: center;
+      font-size: 9px;
+      font-weight: 800;
+      line-height: 1.15;
+      filter: drop-shadow(3px 3px 0 rgba(33,27,47,.45));
+    }
+
+    .unit .body {
+      position: relative;
+      width: 26px;
+      height: 26px;
+      margin: 0 auto 4px;
+      border: 4px solid var(--ink);
+      background: var(--gold);
+    }
+
+    .unit .body::before, .unit .body::after {
+      content: "";
+      position: absolute;
+      top: 7px;
+      width: 4px;
+      height: 4px;
+      background: var(--ink);
+    }
+
+    .unit .body::before { left: 4px; }
+    .unit .body::after { right: 4px; }
+    .unit.running .body { animation: bob .7s steps(2, end) infinite; }
+    .unit.waiting .body { background: var(--red); }
+    .unit.done .body { background: #9ed269; }
+
+    .unit .name {
+      display: inline-block;
+      padding: 3px 4px;
+      white-space: nowrap;
+      color: var(--cream);
+      background: var(--ink);
+    }
+
+    .bubble {
+      position: absolute;
+      left: 50%;
+      bottom: calc(100% + 8px);
+      transform: translateX(-50%);
+      padding: 4px 5px;
+      white-space: nowrap;
+      border: 3px solid var(--ink);
+      color: var(--ink);
+      background: var(--cream);
+      font-size: 8px;
+    }
+
+    .bubble::after {
+      content: "";
+      position: absolute;
+      left: 12px;
+      bottom: -8px;
+      border: 4px solid transparent;
+      border-top-color: var(--ink);
+    }
+
+    .player {
+      position: absolute;
+      z-index: 4;
+      width: 38px;
+      text-align: center;
+      color: var(--cream);
+      font-size: 9px;
+      font-weight: 800;
+    }
+
+    .player::before {
+      content: "YOU";
+      display: grid;
+      place-items: center;
+      width: 25px;
+      height: 25px;
+      margin: 0 auto 4px;
+      border: 4px solid var(--ink);
+      background: var(--blue);
+      box-shadow: 3px 3px 0 rgba(33,27,47,.45);
+      font-size: 7px;
+    }
+
+    .card {
+      top: 14px;
+      right: 14px;
+      width: 190px;
+      padding: 9px;
+      font-size: 9px;
+      line-height: 1.45;
+    }
+
+    .card strong { font-size: 11px; }
+    .card .state { color: #278649; font-weight: 800; }
+    .card hr { margin: 7px 0; border: 0; border-top: 2px dotted #ac8d58; }
+
+    /* A: radial HQ village */
+    .variant-a .path-a { left: 50%; top: 48%; width: 24%; transform: rotate(-66deg); }
+    .variant-a .path-b { left: 50%; top: 49%; width: 25%; transform: rotate(10deg); }
+    .variant-a .path-c { left: 50%; top: 50%; width: 24%; transform: rotate(73deg); }
+    .variant-a .path-d { left: 48%; top: 47%; width: 30%; transform: rotate(174deg); }
+    .variant-a .u-explorer { left: 25%; top: 21%; }
+    .variant-a .u-worker { left: 70%; top: 28%; }
+    .variant-a .u-tester { left: 75%; top: 67%; }
+    .variant-a .u-reviewer { left: 17%; top: 65%; }
+    .variant-a .p-radial { left: 60%; top: 57%; }
+    .variant-a .card { top: 14px; right: 14px; }
+
+    /* B: explicit top-to-bottom execution tree */
+    .variant-b { background: #5b9065; }
+    .variant-b .tree-line {
+      position: absolute;
+      z-index: 1;
+      background: var(--cream);
+      box-shadow: 2px 2px 0 rgba(33,27,47,.35);
+    }
+    .variant-b .tree-line.v { width: 4px; }
+    .variant-b .tree-line.h { height: 4px; }
+    .variant-b .line-root { left: 51%; top: 25%; height: 16%; }
+    .variant-b .line-main { left: 22%; top: 41%; width: 58%; }
+    .variant-b .line-left { left: 22%; top: 41%; height: 13%; }
+    .variant-b .line-mid { left: 51%; top: 41%; height: 13%; }
+    .variant-b .line-right { left: 80%; top: 41%; height: 13%; }
+    .variant-b .line-nested { left: 51%; top: 68%; height: 10%; }
+    .variant-b .line-nested-h { left: 51%; top: 78%; width: 17%; }
+    .variant-b .hq { left: 44%; top: 12%; width: 14%; height: 13%; }
+    .variant-b .u-explorer { left: 15%; top: 54%; }
+    .variant-b .u-worker { left: 44%; top: 54%; }
+    .variant-b .u-reviewer { left: 73%; top: 54%; }
+    .variant-b .u-tester { left: 58%; top: 80%; }
+    .variant-b .p-radial { left: 77%; top: 78%; }
+    .variant-b .card { left: 14px; top: 14px; right: auto; }
+    .variant-b .hint { left: 14px; right: auto; }
+
+    /* C: district map with work zones */
+    .variant-c { background: #4a8463; }
+    .variant-c .district {
+      position: absolute;
+      z-index: 1;
+      border: 4px solid rgba(33,27,47,.45);
+      background: rgba(255,244,206,.1);
+    }
+    .variant-c .research { left: 8%; top: 21%; width: 27%; height: 55%; }
+    .variant-c .forge { left: 38%; top: 21%; width: 27%; height: 55%; }
+    .variant-c .review { left: 68%; top: 21%; width: 25%; height: 55%; }
+    .variant-c .district-label {
+      top: -16px;
+      left: 8px;
+      padding: 2px 5px;
+      border-width: 3px;
+      font-size: 8px;
+    }
+    .variant-c .hq { left: 43%; top: 3%; width: 14%; height: 13%; }
+    .variant-c .path-a { left: 49%; top: 16%; width: 30%; transform: rotate(118deg); }
+    .variant-c .path-b { left: 50%; top: 16%; width: 22%; transform: rotate(90deg); }
+    .variant-c .path-c { left: 52%; top: 16%; width: 30%; transform: rotate(63deg); }
+    .variant-c .u-explorer { left: 15%; top: 42%; }
+    .variant-c .u-worker { left: 46%; top: 42%; }
+    .variant-c .u-tester { left: 77%; top: 42%; }
+    .variant-c .u-reviewer { left: 77%; top: 62%; }
+    .variant-c .p-radial { left: 45%; top: 82%; }
+    .variant-c .card { left: 14px; top: 14px; right: auto; }
+    .variant-c .hint { left: 14px; right: auto; }
+
+    .switcher {
+      position: fixed;
+      z-index: 20;
+      left: 50%;
+      bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transform: translateX(-50%);
+      padding: 6px;
+      border: 4px solid var(--ink);
+      color: var(--cream);
+      background: var(--purple);
+      box-shadow: 5px 5px 0 #0b0911;
+      font-size: 10px;
+      white-space: nowrap;
+    }
+
+    .switcher button {
+      width: 27px;
+      height: 24px;
+      border: 3px solid var(--ink);
+      color: var(--ink);
+      background: var(--gold);
+      cursor: pointer;
+      font: inherit;
+      font-weight: 800;
+    }
+
+    .switcher button:hover, .switcher button:focus-visible { background: var(--cream); }
+
+    @keyframes bob {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-3px); }
+    }
+
+    @media (max-width: 700px) {
+      body { padding: 10px 10px 80px; }
+      .world { min-height: 600px; }
+      .card { width: 165px; }
+      .hint { max-width: 190px; }
+      .topline { font-size: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="topline">
+      <span><strong>codex-village</strong> / spatial grammar study</span>
+      <span class="prototype-tag">PROTOTYPE — NOT PRODUCTION</span>
+    </div>
+    <div id="world" class="world" aria-label="codex-village spatial grammar prototype"></div>
+  </div>
+
+  <nav class="switcher" aria-label="Prototype variations">
+    <button id="prev" type="button" aria-label="Previous variation">←</button>
+    <span id="variant-label">A</span>
+    <button id="next" type="button" aria-label="Next variation">→</button>
+  </nav>
+
+  <script>
+    // Three intentionally different layouts answering: how should execution feel spatially?
+    const variants = [
+      { key: 'A', name: 'HQ radial village' },
+      { key: 'B', name: 'explicit execution tree' },
+      { key: 'C', name: 'district work town' },
+    ];
+
+    const agent = (className, name, bubble, state = '') => `
+      <div class="unit ${className} ${state}">
+        ${bubble ? `<span class="bubble">${bubble}</span>` : ''}
+        <div class="body" aria-hidden="true"></div>
+        <span class="name">${name}</span>
+      </div>`;
+
+    const common = `
+      <div class="hud"><b>ROOT HQ</b><br><span class="dot">●</span> 4 units visible<br>tree depth: 2</div>
+      <div class="card"><strong>worker-1</strong><br>Worker · gpt-5.x<hr><b>state</b> <span class="state">running</span><br><b>activity</b> tool<br><b>parent</b> root</div>
+      ${agent('u-explorer', 'explorer-1', 'searching…', 'running')}
+      ${agent('u-worker', 'worker-1', 'on it!', 'running')}
+      ${agent('u-tester', 'tester-1', 'testing…', 'waiting')}
+      ${agent('u-reviewer', 'reviewer', 'almost done…', 'done')}
+      <div class="player p-radial">player</div>
+    `;
+
+    function renderA() {
+      return `<div class="variant-a">${common}
+        <div class="building hq" aria-label="Root HQ"></div>
+        <div class="path path-a"></div><div class="path path-b"></div>
+        <div class="path path-c"></div><div class="path path-d"></div>
+        <div class="hint">A / HQ radial village<br>Delegation radiates from the center. Easy to read as a town; hierarchy is spatially implied.</div>
+      </div>`;
+    }
+
+    function renderB() {
+      return `<div class="variant-b">${common}
+        <div class="building hq" aria-label="Root HQ"></div>
+        <div class="tree-line v line-root"></div><div class="tree-line h line-main"></div>
+        <div class="tree-line v line-left"></div><div class="tree-line v line-mid"></div>
+        <div class="tree-line v line-right"></div><div class="tree-line v line-nested"></div>
+        <div class="tree-line h line-nested-h"></div>
+        <div class="hint">B / explicit execution tree<br>Parent-child relationships are unmistakable. Less like a town, more like a living org chart.</div>
+      </div>`;
+    }
+
+    function renderC() {
+      return `<div class="variant-c">${common}
+        <div class="building hq" aria-label="Root HQ"></div>
+        <div class="district research"><span class="district-label">RESEARCH</span></div>
+        <div class="district forge"><span class="district-label">WORKSHOP</span></div>
+        <div class="district review"><span class="district-label">REVIEW</span></div>
+        <div class="path path-a"></div><div class="path path-b"></div><div class="path path-c"></div>
+        <div class="hint">C / district work town<br>Tool activity has a natural destination. Strong mental model for “what is happening where?”</div>
+      </div>`;
+    }
+
+    const renderers = { A: renderA, B: renderB, C: renderC };
+    const world = document.querySelector('#world');
+    const label = document.querySelector('#variant-label');
+    const params = new URLSearchParams(location.search);
+    let current = (params.get('variant') || 'A').toUpperCase();
+    if (!renderers[current]) current = 'A';
+
+    function render() {
+      world.innerHTML = renderers[current]();
+      const meta = variants.find((variant) => variant.key === current);
+      label.textContent = `${meta.key} — ${meta.name}`;
+      const nextUrl = new URL(location.href);
+      nextUrl.searchParams.set('variant', current);
+      history.replaceState(null, '', nextUrl);
+    }
+
+    function move(step) {
+      const index = variants.findIndex((variant) => variant.key === current);
+      current = variants[(index + step + variants.length) % variants.length].key;
+      render();
+    }
+
+    document.querySelector('#prev').addEventListener('click', () => move(-1));
+    document.querySelector('#next').addEventListener('click', () => move(1));
+    document.addEventListener('keydown', (event) => {
+      if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName) || document.activeElement?.isContentEditable) return;
+      if (event.key === 'ArrowLeft') move(-1);
+      if (event.key === 'ArrowRight') move(1);
+    });
+    render();
+  </script>
+</body>
+</html>
