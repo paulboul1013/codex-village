@@ -79,13 +79,12 @@ func serveDemoSnapshot(w http.ResponseWriter, r *http.Request) {
 }
 
 func demoSnapshot() WorldSnapshot {
-	return WorldSnapshot{
-		Type:   "snapshot",
-		Agents: demoWorld().Agents,
-	}
+	return worldSnapshot(demoSource{}.normalizedWorld())
 }
 
-func demoWorld() normalizedWorld {
+type demoSource struct{}
+
+func (demoSource) normalizedWorld() normalizedWorld {
 	return normalizedWorld{
 		Agents: []AgentNode{
 			{
@@ -106,6 +105,13 @@ func demoWorld() normalizedWorld {
 				Presence:       "active",
 			},
 		},
+	}
+}
+
+func worldSnapshot(world normalizedWorld) WorldSnapshot {
+	return WorldSnapshot{
+		Type:   "snapshot",
+		Agents: world.Agents,
 	}
 }
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -110,6 +111,54 @@ func TestDemoSnapshotUsesNormalizedWorldContract(t *testing.T) {
 	}
 	if snapshot.Agents[1].ParentID != snapshot.Agents[0].ID {
 		t.Fatalf("subagent parent = %q, want %q", snapshot.Agents[1].ParentID, snapshot.Agents[0].ID)
+	}
+}
+
+func TestDemoSourceFlowsThroughNormalizedWorldSnapshot(t *testing.T) {
+	source := demoSource{}
+	snapshot := worldSnapshot(source.normalizedWorld())
+
+	if snapshot.Type != "snapshot" {
+		t.Fatalf("snapshot type = %q, want snapshot", snapshot.Type)
+	}
+	if len(snapshot.Agents) != 2 {
+		t.Fatalf("agent count = %d, want 2", len(snapshot.Agents))
+	}
+	if snapshot.Agents[1].ParentID != snapshot.Agents[0].ID {
+		t.Fatalf("subagent parent = %q, want %q", snapshot.Agents[1].ParentID, snapshot.Agents[0].ID)
+	}
+}
+
+func TestDemoSnapshotSerializesOnlySafeFields(t *testing.T) {
+	encoded, err := json.Marshal(demoSnapshot())
+	if err != nil {
+		t.Fatalf("marshal demo snapshot: %v", err)
+	}
+
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &payload); err != nil {
+		t.Fatalf("decode demo snapshot: %v", err)
+	}
+	for field := range payload {
+		if field != "type" && field != "agents" {
+			t.Fatalf("unexpected snapshot field %q", field)
+		}
+	}
+
+	var agents []map[string]json.RawMessage
+	if err := json.Unmarshal(payload["agents"], &agents); err != nil {
+		t.Fatalf("decode agents: %v", err)
+	}
+	allowedAgentFields := map[string]bool{
+		"id": true, "parentId": true, "name": true, "role": true,
+		"lifecycleState": true, "activityKind": true, "presence": true,
+	}
+	for _, agent := range agents {
+		for field := range agent {
+			if !allowedAgentFields[field] {
+				t.Fatalf("unexpected agent field %q", field)
+			}
+		}
 	}
 }
 
