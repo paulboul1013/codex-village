@@ -64,6 +64,7 @@ type ExecutionTree struct {
 type threadIndex struct {
 	byID      map[string]ThreadRecord
 	conflicts map[string]bool
+	parentIDs map[string][]string
 }
 
 func selectExecutionRoot(records []ThreadRecord, selector ThreadSelector) (ThreadRecord, error) {
@@ -92,7 +93,8 @@ func selectExecutionRoot(records []ThreadRecord, selector ThreadSelector) (Threa
 }
 
 // eligibleRoots returns the candidates that a no-selector Observer picker may
-// display. It deliberately excludes child threads and fork-only provenance.
+// display. It excludes child threads and never treats fork provenance as an
+// implicit child edge.
 func eligibleRoots(records []ThreadRecord, cwd string) []ThreadRecord {
 	return eligibleRootsFromIndex(indexThreads(records), cwd)
 }
@@ -131,14 +133,19 @@ func reconstructExecutionTree(records []ThreadRecord, rootID string) (ExecutionT
 	children := make(map[string][]string)
 	pending := make([]PendingRelation, 0)
 	for childID, child := range index.byID {
-		parentID := child.ParentThreadID
-		if childID == rootID || parentID == "" {
+		if index.conflicts[childID] {
+			for _, parentID := range index.parentIDs[childID] {
+				if parentID == "" {
+					continue
+				}
+				pending = append(pending, PendingRelation{
+					ChildID: childID, ParentID: parentID, Reason: PendingConflictingParent,
+				})
+			}
 			continue
 		}
-		if index.conflicts[childID] {
-			pending = append(pending, PendingRelation{
-				ChildID: childID, ParentID: parentID, Reason: PendingConflictingParent,
-			})
+		parentID := child.ParentThreadID
+		if childID == rootID || parentID == "" {
 			continue
 		}
 
@@ -181,10 +188,15 @@ func reconstructExecutionTree(records []ThreadRecord, rootID string) (ExecutionT
 		PendingRelations: pending,
 	}
 	queue := []string{rootID}
+	visited := map[string]bool{rootID: true}
 	for len(queue) > 0 {
 		parentID := queue[0]
 		queue = queue[1:]
 		for _, childID := range children[parentID] {
+			if visited[childID] {
+				continue
+			}
+			visited[childID] = true
 			child := index.byID[childID]
 			child.ParentThreadID = parentID
 			tree.Threads = append(tree.Threads, child)
@@ -199,28 +211,37 @@ func reconstructExecutionTree(records []ThreadRecord, rootID string) (ExecutionT
 func (tree ExecutionTree) normalizedWorld() normalizedWorld {
 	agents := make([]AgentNode, 0, len(tree.Threads))
 	for _, thread := range tree.Threads {
-		node := thread.Agent
-		node.ID = thread.ID
-		node.ParentID = thread.ParentThreadID
-		if thread.ID == tree.RootID {
-			node.ParentID = ""
-		}
-		if node.Name == "" {
-			node.Name = thread.ID
-		}
-		agents = append(agents, node)
+		agents = append(agents, safeAgentNode(thread, tree.RootID))
 	}
 	return normalizedWorld{Agents: agents}
+}
+
+func safeAgentNode(thread ThreadRecord, rootID string) AgentNode {
+	node := thread.Agent
+	node.ID = thread.ID
+	node.ParentID = thread.ParentThreadID
+	if thread.ID == rootID {
+		node.ParentID = ""
+	}
+	if node.Name == "" {
+		node.Name = thread.ID
+	}
+	return node
 }
 
 func indexThreads(records []ThreadRecord) threadIndex {
 	index := threadIndex{
 		byID:      make(map[string]ThreadRecord),
 		conflicts: make(map[string]bool),
+		parentIDs: make(map[string][]string),
 	}
 	for _, record := range records {
 		if !validThreadRecord(record) {
 			continue
+		}
+		if !containsString(index.parentIDs[record.ID], record.ParentThreadID) {
+			index.parentIDs[record.ID] = append(index.parentIDs[record.ID], record.ParentThreadID)
+			sort.Strings(index.parentIDs[record.ID])
 		}
 		existing, exists := index.byID[record.ID]
 		if !exists {
@@ -252,4 +273,13 @@ func normalizeCWD(cwd string) string {
 		return ""
 	}
 	return filepath.Clean(trimmed)
+}
+
+func containsString(values []string, wanted string) bool {
+	for _, value := range values {
+		if value == wanted {
+			return true
+		}
+	}
+	return false
 }

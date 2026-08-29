@@ -166,6 +166,7 @@ func TestReconstructExecutionTreeKeepsInvalidRelationsPending(t *testing.T) {
 		t.Fatalf("pending tree thread count = %d, want root only", len(tree.Threads))
 	}
 	if got, want := pendingPairs(tree.PendingRelations), []string{
+		"conflict->other-parent",
 		"conflict->root",
 		"missing-parent-child->missing-parent",
 		"session-mismatch->root",
