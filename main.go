@@ -29,6 +29,10 @@ type normalizedWorld struct {
 	Agents []AgentNode
 }
 
+type normalizedWorldSource interface {
+	normalizedWorld() normalizedWorld
+}
+
 type WorldSnapshot struct {
 	Type   string      `json:"type"`
 	Agents []AgentNode `json:"agents"`
@@ -79,7 +83,7 @@ func serveDemoSnapshot(w http.ResponseWriter, r *http.Request) {
 }
 
 func demoSnapshot() WorldSnapshot {
-	return worldSnapshot(demoSource{}.normalizedWorld())
+	return worldSnapshot(demoSource{})
 }
 
 type demoSource struct{}
@@ -108,7 +112,8 @@ func (demoSource) normalizedWorld() normalizedWorld {
 	}
 }
 
-func worldSnapshot(world normalizedWorld) WorldSnapshot {
+func worldSnapshot(source normalizedWorldSource) WorldSnapshot {
+	world := source.normalizedWorld()
 	return WorldSnapshot{
 		Type:   "snapshot",
 		Agents: world.Agents,

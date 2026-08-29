@@ -66,34 +66,22 @@ func TestDemoServerStreamsInitialSafeWorldSnapshot(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = connection.Close(websocket.StatusNormalClosure, "") })
 
-	var snapshot map[string]any
+	var snapshot WorldSnapshot
 	if err := wsjson.Read(context.Background(), connection, &snapshot); err != nil {
 		t.Fatalf("read demo snapshot: %v", err)
 	}
 
-	if snapshot["type"] != "snapshot" {
-		t.Fatalf("snapshot type = %q, want snapshot", snapshot["type"])
+	if snapshot.Type != "snapshot" {
+		t.Fatalf("snapshot type = %q, want snapshot", snapshot.Type)
 	}
-	agents, ok := snapshot["agents"].([]any)
-	if !ok {
-		t.Fatalf("agents = %T, want []any", snapshot["agents"])
+	if len(snapshot.Agents) != 2 {
+		t.Fatalf("agent count = %d, want 2", len(snapshot.Agents))
 	}
-	if len(agents) != 2 {
-		t.Fatalf("agent count = %d, want 2", len(agents))
+	if snapshot.Agents[0].Role != "root" || snapshot.Agents[0].ParentID != "" {
+		t.Fatalf("root = %+v, want root without parent", snapshot.Agents[0])
 	}
-	root, ok := agents[0].(map[string]any)
-	if !ok {
-		t.Fatalf("root agent = %T, want object", agents[0])
-	}
-	subagent, ok := agents[1].(map[string]any)
-	if !ok {
-		t.Fatalf("subagent = %T, want object", agents[1])
-	}
-	if root["role"] != "root" || root["parentId"] != nil {
-		t.Fatalf("root = %#v, want root without parent", root)
-	}
-	if subagent["parentId"] != root["id"] {
-		t.Fatalf("subagent parent = %q, want %q", subagent["parentId"], root["id"])
+	if snapshot.Agents[1].ParentID != snapshot.Agents[0].ID {
+		t.Fatalf("subagent parent = %q, want %q", snapshot.Agents[1].ParentID, snapshot.Agents[0].ID)
 	}
 }
 
@@ -116,7 +104,7 @@ func TestDemoSnapshotUsesNormalizedWorldContract(t *testing.T) {
 
 func TestDemoSourceFlowsThroughNormalizedWorldSnapshot(t *testing.T) {
 	source := demoSource{}
-	snapshot := worldSnapshot(source.normalizedWorld())
+	snapshot := worldSnapshot(source)
 
 	if snapshot.Type != "snapshot" {
 		t.Fatalf("snapshot type = %q, want snapshot", snapshot.Type)
