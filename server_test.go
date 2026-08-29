@@ -52,6 +52,75 @@ func TestDemoServerServesHealthAndCanvas(t *testing.T) {
 	}
 }
 
+func TestDemoServerSelectsSafeTreeByHTTP(t *testing.T) {
+	server := httptest.NewServer(newServer())
+	t.Cleanup(server.Close)
+
+	response, err := http.Get(server.URL + "/api/tree?thread=scout-demo")
+	if err != nil {
+		t.Fatalf("GET selected tree: %v", err)
+	}
+	t.Cleanup(func() { _ = response.Body.Close() })
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("selected tree status = %d, want %d", response.StatusCode, http.StatusOK)
+	}
+
+	var snapshot WorldSnapshot
+	if err := json.NewDecoder(response.Body).Decode(&snapshot); err != nil {
+		t.Fatalf("decode selected tree: %v", err)
+	}
+	if got := len(snapshot.Agents); got != 1 {
+		t.Fatalf("selected child agent count = %d, want 1", got)
+	}
+	if snapshot.Agents[0].ID != "scout-demo" || snapshot.Agents[0].ParentID != "" {
+		t.Fatalf("selected child agent = %+v, want child view root", snapshot.Agents[0])
+	}
+}
+
+func TestDemoServerUsesCWDAsSafeRootPickerFilter(t *testing.T) {
+	server := httptest.NewServer(newServer())
+	t.Cleanup(server.Close)
+
+	response, err := http.Get(server.URL + "/api/tree?cwd=/demo/.")
+	if err != nil {
+		t.Fatalf("GET root picker: %v", err)
+	}
+	t.Cleanup(func() { _ = response.Body.Close() })
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("root picker status = %d, want %d", response.StatusCode, http.StatusOK)
+	}
+
+	var picker rootPickerResponse
+	if err := json.NewDecoder(response.Body).Decode(&picker); err != nil {
+		t.Fatalf("decode root picker: %v", err)
+	}
+	if picker.Type != "root_picker" || len(picker.Roots) != 1 || picker.Roots[0].ID != "root-demo" {
+		t.Fatalf("root picker = %+v, want only root-demo", picker)
+	}
+}
+
+func TestDemoServerReturnsSafeSelectionError(t *testing.T) {
+	server := httptest.NewServer(newServer())
+	t.Cleanup(server.Close)
+
+	response, err := http.Get(server.URL + "/api/tree?thread=missing")
+	if err != nil {
+		t.Fatalf("GET missing tree: %v", err)
+	}
+	t.Cleanup(func() { _ = response.Body.Close() })
+	if response.StatusCode != http.StatusNotFound {
+		t.Fatalf("missing tree status = %d, want %d", response.StatusCode, http.StatusNotFound)
+	}
+
+	var failure selectionErrorResponse
+	if err := json.NewDecoder(response.Body).Decode(&failure); err != nil {
+		t.Fatalf("decode selection error: %v", err)
+	}
+	if failure.Error != "thread_not_found" {
+		t.Fatalf("selection error = %q, want thread_not_found", failure.Error)
+	}
+}
+
 func TestDemoServerStreamsInitialSafeWorldSnapshot(t *testing.T) {
 	server := httptest.NewServer(newServer())
 	t.Cleanup(server.Close)
