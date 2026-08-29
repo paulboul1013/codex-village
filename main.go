@@ -15,6 +15,25 @@ import (
 //go:embed static
 var staticFiles embed.FS
 
+type AgentNode struct {
+	ID             string `json:"id"`
+	ParentID       string `json:"parentId,omitempty"`
+	Name           string `json:"name"`
+	Role           string `json:"role"`
+	LifecycleState string `json:"lifecycleState"`
+	ActivityKind   string `json:"activityKind"`
+	Presence       string `json:"presence"`
+}
+
+type normalizedWorld struct {
+	Agents []AgentNode
+}
+
+type WorldSnapshot struct {
+	Type   string      `json:"type"`
+	Agents []AgentNode `json:"agents"`
+}
+
 func newServer() http.Handler {
 	staticRoot, err := fs.Sub(staticFiles, "static")
 	if err != nil {
@@ -59,26 +78,32 @@ func serveDemoSnapshot(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func demoSnapshot() map[string]any {
-	return map[string]any{
-		"type": "snapshot",
-		"agents": []map[string]string{
+func demoSnapshot() WorldSnapshot {
+	return WorldSnapshot{
+		Type:   "snapshot",
+		Agents: demoWorld().Agents,
+	}
+}
+
+func demoWorld() normalizedWorld {
+	return normalizedWorld{
+		Agents: []AgentNode{
 			{
-				"id":             "root-demo",
-				"name":           "root-agent",
-				"role":           "root",
-				"lifecycleState": "running",
-				"activityKind":   "reasoning",
-				"presence":       "active",
+				ID:             "root-demo",
+				Name:           "root-agent",
+				Role:           "root",
+				LifecycleState: "running",
+				ActivityKind:   "reasoning",
+				Presence:       "active",
 			},
 			{
-				"id":             "scout-demo",
-				"parentId":       "root-demo",
-				"name":           "scout-1",
-				"role":           "subagent",
-				"lifecycleState": "running",
-				"activityKind":   "research",
-				"presence":       "active",
+				ID:             "scout-demo",
+				ParentID:       "root-demo",
+				Name:           "scout-1",
+				Role:           "subagent",
+				LifecycleState: "running",
+				ActivityKind:   "research",
+				Presence:       "active",
 			},
 		},
 	}

@@ -96,6 +96,23 @@ func TestDemoServerStreamsInitialSafeWorldSnapshot(t *testing.T) {
 	}
 }
 
+func TestDemoSnapshotUsesNormalizedWorldContract(t *testing.T) {
+	snapshot := demoSnapshot()
+
+	if snapshot.Type != "snapshot" {
+		t.Fatalf("snapshot type = %q, want snapshot", snapshot.Type)
+	}
+	if len(snapshot.Agents) != 2 {
+		t.Fatalf("agent count = %d, want 2", len(snapshot.Agents))
+	}
+	if snapshot.Agents[0].Role != "root" || snapshot.Agents[0].ParentID != "" {
+		t.Fatalf("root agent = %+v, want root without parent", snapshot.Agents[0])
+	}
+	if snapshot.Agents[1].ParentID != snapshot.Agents[0].ID {
+		t.Fatalf("subagent parent = %q, want %q", snapshot.Agents[1].ParentID, snapshot.Agents[0].ID)
+	}
+}
+
 func TestDemoServerKeepsWebSocketOpenAfterInitialSnapshot(t *testing.T) {
 	server := httptest.NewServer(newServer())
 	t.Cleanup(server.Close)
