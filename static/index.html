@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>codex-village</title>
+    <link rel="icon" href="data:,">
+    <style>
+      :root { background: #172833; color: #f8f2d7; font-family: monospace; }
+      body { display: grid; min-height: 100vh; margin: 0; place-items: center; }
+      main { display: grid; gap: 12px; justify-items: center; }
+      canvas { background: #4f8d63; image-rendering: pixelated; max-width: min(96vw, 960px); width: 100%; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <canvas id="world" width="480" height="270" aria-label="codex-village demo world"></canvas>
+      <output id="status">connecting to demo world…</output>
+    </main>
+    <script>
+      const canvas = document.querySelector("#world");
+      const context = canvas.getContext("2d");
+      const status = document.querySelector("#status");
+
+      function draw(snapshot) {
+        context.fillStyle = "#285d4b";
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.font = "10px monospace";
+
+        snapshot.agents.forEach((agent, index) => {
+          const isRoot = agent.role === "root";
+          const x = isRoot ? 240 : 110 + index * 130;
+          const y = isRoot ? 108 : 190;
+
+          context.fillStyle = isRoot ? "#f8d66d" : "#d98153";
+          context.fillRect(x - 20, y - 18, 40, 36);
+          context.fillStyle = "#fff4cf";
+          context.fillText(isRoot ? "HQ" : "WORK", x - 12, y + 4);
+          context.fillText(agent.name, x - 24, y + 34);
+
+          if (!isRoot) {
+            context.strokeStyle = "#f8d66d";
+            context.beginPath();
+            context.moveTo(240, 126);
+            context.lineTo(x, y - 18);
+            context.stroke();
+          }
+        });
+      }
+
+      const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+      const socket = new WebSocket(protocol + "//" + location.host + "/ws");
+      socket.addEventListener("message", (event) => {
+        const snapshot = JSON.parse(event.data);
+        draw(snapshot);
+        status.textContent = snapshot.agents.length + " demo agents connected";
+      });
+      socket.addEventListener("error", () => {
+        status.textContent = "demo world unavailable";
+      });
+    </script>
+  </body>
+</html>
