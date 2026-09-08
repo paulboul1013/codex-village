@@ -63,6 +63,30 @@ func TestDiscoverRolloutThreadsSkipsMalformedAndUnidentifiedFiles(t *testing.T) 
 	}
 }
 
+func TestDiscoverRolloutThreadsRehydratesCurrentStateWithoutRetainingPayloads(t *testing.T) {
+	home := t.TempDir()
+	day := filepath.Join(home, "sessions", "2026", "09", "08")
+	if err := os.MkdirAll(day, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeRolloutFixture(t, filepath.Join(day, "rollout-worker.jsonl"),
+		`{"timestamp":"2026-09-08T10:00:00Z","type":"session_meta","payload":{"id":"worker","cwd":"/workspace/app","source":"cli"}}`+"\n"+
+			`{"timestamp":"2026-09-08T10:01:00Z","type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"private command"}}`+"\n"+
+			`{"timestamp":"2026-09-08T10:02:00Z","type":"event_msg","payload":{"type":"task_complete","last_agent_message":"private answer"}}`+"\n")
+
+	catalog, err := discoverRolloutThreads(home)
+	if err != nil {
+		t.Fatalf("discover rollouts: %v", err)
+	}
+	if len(catalog.Records) != 1 {
+		t.Fatalf("record count = %d, want 1", len(catalog.Records))
+	}
+	node := catalog.Records[0].Agent
+	if node.LifecycleState != "completed" || node.ActivityKind != "unknown" || node.Presence != "idle" {
+		t.Fatalf("rehydrated node = %+v, want completed current state", node)
+	}
+}
+
 func writeRolloutFixture(t *testing.T, path, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {

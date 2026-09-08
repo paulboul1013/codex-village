@@ -56,21 +56,10 @@ type rolloutThreadSpawn struct {
 // discoverRolloutThreads scans session metadata into the narrow internal
 // representation used for tree selection. Raw payloads never leave this call.
 func discoverRolloutThreads(codexHome string) (rolloutCatalog, error) {
-	sessionsRoot := filepath.Join(codexHome, "sessions")
-	paths := make([]string, 0)
-	err := filepath.WalkDir(sessionsRoot, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.Type().IsRegular() && strings.HasPrefix(entry.Name(), "rollout-") && strings.HasSuffix(entry.Name(), ".jsonl") {
-			paths = append(paths, path)
-		}
-		return nil
-	})
+	paths, err := listRolloutPaths(codexHome)
 	if err != nil {
-		return rolloutCatalog{}, fmt.Errorf("scan Codex sessions: %w", err)
+		return rolloutCatalog{}, err
 	}
-	sort.Strings(paths)
 
 	catalog := rolloutCatalog{Records: make([]ThreadRecord, 0, len(paths))}
 	for _, path := range paths {
@@ -90,6 +79,24 @@ func discoverRolloutThreads(codexHome string) (rolloutCatalog, error) {
 		return catalog.Records[left].ID < catalog.Records[right].ID
 	})
 	return catalog, nil
+}
+
+func listRolloutPaths(codexHome string) ([]string, error) {
+	paths := make([]string, 0)
+	err := filepath.WalkDir(filepath.Join(codexHome, "sessions"), func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.Type().IsRegular() && strings.HasPrefix(entry.Name(), "rollout-") && strings.HasSuffix(entry.Name(), ".jsonl") {
+			paths = append(paths, path)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("scan Codex sessions: %w", err)
+	}
+	sort.Strings(paths)
+	return paths, nil
 }
 
 func inspectRolloutMetadata(path string) (ThreadRecord, int, bool, error) {
@@ -117,7 +124,11 @@ func inspectRolloutMetadata(path string) (ThreadRecord, int, bool, error) {
 		if timestamp, err := time.Parse(time.RFC3339Nano, envelope.Timestamp); err == nil && timestamp.After(record.LastActivityAt) {
 			record.LastActivityAt = timestamp
 		}
-		if identified || envelope.Type != "session_meta" {
+		if identified {
+			reduceRolloutActivity(&record.Agent, json.RawMessage(line))
+			continue
+		}
+		if envelope.Type != "session_meta" {
 			continue
 		}
 		var metadata rolloutSessionMetadata

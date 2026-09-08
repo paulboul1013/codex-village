@@ -42,7 +42,7 @@ func TestOpenObserverSourceWithoutSelectorSupportsRootPicker(t *testing.T) {
 	}
 }
 
-func TestObserverSourcePollAppliesAppendedActivityWithoutHistoricalReplay(t *testing.T) {
+func TestObserverSourcePollStartsFromRehydratedStateWithoutHistoricalEventReplay(t *testing.T) {
 	home := t.TempDir()
 	day := filepath.Join(home, "sessions", "2026", "09", "08")
 	if err := os.MkdirAll(day, 0o700); err != nil {
@@ -57,8 +57,8 @@ func TestObserverSourcePollAppliesAppendedActivityWithoutHistoricalReplay(t *tes
 	if err != nil {
 		t.Fatalf("open observer source: %v", err)
 	}
-	if source.normalizedWorld().Agents[0].LifecycleState != "unknown" {
-		t.Fatalf("historical activity was replayed: %+v", source.normalizedWorld().Agents[0])
+	if source.normalizedWorld().Agents[0].LifecycleState != "completed" {
+		t.Fatalf("current state was not rehydrated: %+v", source.normalizedWorld().Agents[0])
 	}
 	appendFile(t, path, `{"timestamp":"2026-09-08T10:02:00Z","type":"event_msg","payload":{"type":"task_started","turn_id":"private"}}`+"\n")
 
@@ -75,5 +75,63 @@ func TestObserverSourcePollAppliesAppendedActivityWithoutHistoricalReplay(t *tes
 	}
 	if changed, err := source.poll(); err != nil || changed {
 		t.Fatalf("empty poll = changed %v error %v, want no change", changed, err)
+	}
+}
+
+func TestObserverSourceDiscoversNewChildRolloutAndTailsItsActivity(t *testing.T) {
+	home := t.TempDir()
+	day := filepath.Join(home, "sessions", "2026", "09", "08")
+	if err := os.MkdirAll(day, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeRolloutFixture(t, filepath.Join(day, "rollout-root.jsonl"), `{"timestamp":"2026-09-08T10:00:00Z","type":"session_meta","payload":{"id":"root","cwd":"/workspace/app","source":"cli"}}`+"\n")
+	source, err := openObserverSource(home, ThreadSelector{ThreadID: "root"})
+	if err != nil {
+		t.Fatalf("open observer source: %v", err)
+	}
+
+	childPath := filepath.Join(day, "rollout-child.jsonl")
+	writeRolloutFixture(t, childPath, `{"timestamp":"2026-09-08T10:01:00Z","type":"session_meta","payload":{"id":"child","cwd":"/workspace/app","agent_nickname":"worker-1","source":{"subagent":{"thread_spawn":{"parent_thread_id":"root","agent_nickname":"worker-1"}}}}}`+"\n")
+	changed, err := source.discoverNewRollouts()
+	if err != nil {
+		t.Fatalf("discover new child: %v", err)
+	}
+	if !changed {
+		t.Fatal("new child did not change observer world")
+	}
+	agents := source.normalizedWorld().Agents
+	if len(agents) != 2 || agents[1].ID != "child" || agents[1].ParentID != "root" || agents[1].Role != "subagent" {
+		t.Fatalf("world after discovery = %+v, want attached child", agents)
+	}
+
+	appendFile(t, childPath, `{"timestamp":"2026-09-08T10:02:00Z","type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"private"}}`+"\n")
+	changed, err = source.poll()
+	if err != nil {
+		t.Fatalf("poll child activity: %v", err)
+	}
+	if !changed || source.normalizedWorld().Agents[1].ActivityKind != "tool" {
+		t.Fatalf("child activity = %+v, want live tool state", source.normalizedWorld().Agents[1])
+	}
+}
+
+func TestObserverSourceLeavesUnrelatedNewRolloutOutsideSelectedTree(t *testing.T) {
+	home := t.TempDir()
+	day := filepath.Join(home, "sessions", "2026", "09", "08")
+	if err := os.MkdirAll(day, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeRolloutFixture(t, filepath.Join(day, "rollout-root.jsonl"), `{"timestamp":"2026-09-08T10:00:00Z","type":"session_meta","payload":{"id":"root","cwd":"/workspace/app","source":"cli"}}`+"\n")
+	source, err := openObserverSource(home, ThreadSelector{ThreadID: "root"})
+	if err != nil {
+		t.Fatalf("open observer source: %v", err)
+	}
+	writeRolloutFixture(t, filepath.Join(day, "rollout-unrelated.jsonl"), `{"timestamp":"2026-09-08T10:01:00Z","type":"session_meta","payload":{"id":"unrelated","cwd":"/workspace/app","source":"cli"}}`+"\n")
+
+	changed, err := source.discoverNewRollouts()
+	if err != nil {
+		t.Fatalf("discover unrelated rollout: %v", err)
+	}
+	if changed || len(source.normalizedWorld().Agents) != 1 {
+		t.Fatalf("unrelated rollout changed selected world: %+v", source.normalizedWorld().Agents)
 	}
 }

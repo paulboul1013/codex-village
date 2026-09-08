@@ -11,6 +11,8 @@ Original prompt: 建立 codex-village，以空間化世界即時視覺化 Codex 
 - Demo server, normalized world snapshot, and execution-tree selection.
 - Observer rollout catalog and safe JSONL tailing.
 - Live activity normalization and WebSocket snapshot updates.
+- Live rollout discovery attaches newly spawned and nested descendants to the selected tree without admitting unrelated sessions.
+- Newly discovered files rehydrate one current safe state without replaying historical events as animations.
 
 ## Current slice
 
@@ -21,7 +23,15 @@ Original prompt: 建立 codex-village，以空間化世界即時視覺化 Codex 
 
 ## TODO
 
-- Discover newly spawned rollout files while Observer mode is already running.
 - Normalize waiting, approval, explicit failure, delegation, and nested spawn events.
 - Add reconnect and quiet/idle timing behavior.
 - Build Managed mode through Codex App Server.
+
+## Three-subagent live test (2026-09-08)
+
+- Spawned three real read-only subagents while `go run . --latest` was already running.
+- WSL health endpoint stayed healthy at the dynamically resolved `eth0` URL.
+- `/api/tree?latest=true` and two Playwright frames both contained only the root agent (`agentCount: 1`).
+- Human inspection of both screenshots confirmed that no worker units appeared or moved.
+- Root cause: the current Observer source catalogs rollout files only at startup; its polling loop tails only files already selected then. Implement live rollout discovery before treating real subagent spawn animation as working.
+- Resolution implemented after this test: poll for new rollout paths once per second, validate parent relationships, attach true descendants, and broadcast the revised snapshot. A fresh three-subagent visual test still requires restarting the older running server binary.

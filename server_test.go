@@ -286,3 +286,39 @@ func TestObserverServerStreamsSnapshotAfterRolloutAppend(t *testing.T) {
 		t.Fatalf("live snapshot = %+v, want running tool activity", updated)
 	}
 }
+
+func TestObserverServerStreamsNewChildDiscoveredAfterConnection(t *testing.T) {
+	home := t.TempDir()
+	day := filepath.Join(home, "sessions", "2026", "09", "08")
+	if err := os.MkdirAll(day, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeRolloutFixture(t, filepath.Join(day, "rollout-root.jsonl"), `{"timestamp":"2026-09-08T10:00:00Z","type":"session_meta","payload":{"id":"root","cwd":"/workspace/app","source":"cli"}}`+"\n")
+	source, err := openObserverSource(home, ThreadSelector{ThreadID: "root"})
+	if err != nil {
+		t.Fatalf("open observer source: %v", err)
+	}
+	server := httptest.NewServer(newServerWithSource(source))
+	t.Cleanup(server.Close)
+	connection, _, err := websocket.Dial(context.Background(), "ws"+strings.TrimPrefix(server.URL, "http")+"/ws", nil)
+	if err != nil {
+		t.Fatalf("dial observer WebSocket: %v", err)
+	}
+	t.Cleanup(func() { _ = connection.Close(websocket.StatusNormalClosure, "") })
+	var initial WorldSnapshot
+	if err := wsjson.Read(context.Background(), connection, &initial); err != nil {
+		t.Fatalf("read initial snapshot: %v", err)
+	}
+
+	writeRolloutFixture(t, filepath.Join(day, "rollout-child.jsonl"), `{"timestamp":"2026-09-08T10:01:00Z","type":"session_meta","payload":{"id":"child","cwd":"/workspace/app","agent_nickname":"worker-1","source":{"subagent":{"thread_spawn":{"parent_thread_id":"root","agent_nickname":"worker-1"}}}}}`+"\n")
+	source.forceDiscoveryOnNextPoll()
+	readContext, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	var updated WorldSnapshot
+	if err := wsjson.Read(readContext, connection, &updated); err != nil {
+		t.Fatalf("read discovered-child snapshot: %v", err)
+	}
+	if len(updated.Agents) != 2 || updated.Agents[1].ID != "child" || updated.Agents[1].ParentID != "root" {
+		t.Fatalf("discovered-child snapshot = %+v, want attached worker", updated)
+	}
+}

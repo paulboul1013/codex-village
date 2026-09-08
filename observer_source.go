@@ -3,14 +3,20 @@ package main
 import (
 	"fmt"
 	"sync"
+	"time"
 )
 
 type observerSource struct {
-	mu       sync.RWMutex
-	records  []ThreadRecord
-	world    normalizedWorld
-	tails    map[string]*jsonlTail
-	revision uint64
+	mu                sync.RWMutex
+	codexHome         string
+	rootID            string
+	records           []ThreadRecord
+	world             normalizedWorld
+	tails             map[string]*jsonlTail
+	knownPaths        map[string]bool
+	revision          uint64
+	nextDiscovery     time.Time
+	discoveryInterval time.Duration
 }
 
 func openObserverSource(codexHome string, selector ThreadSelector) (*observerSource, error) {
@@ -18,7 +24,16 @@ func openObserverSource(codexHome string, selector ThreadSelector) (*observerSou
 	if err != nil {
 		return nil, err
 	}
-	source := &observerSource{records: catalog.Records, tails: make(map[string]*jsonlTail)}
+	source := &observerSource{
+		codexHome:         codexHome,
+		records:           catalog.Records,
+		tails:             make(map[string]*jsonlTail),
+		knownPaths:        make(map[string]bool),
+		discoveryInterval: time.Second,
+	}
+	for _, record := range catalog.Records {
+		source.knownPaths[record.RolloutPath] = true
+	}
 	if selector.ThreadID == "" && !selector.Latest {
 		return source, nil
 	}
@@ -31,6 +46,7 @@ func openObserverSource(codexHome string, selector ThreadSelector) (*observerSou
 		return nil, err
 	}
 	source.world = tree.normalizedWorld()
+	source.rootID = root.ID
 	for _, thread := range tree.Threads {
 		if thread.RolloutPath == "" {
 			continue
@@ -42,6 +58,69 @@ func openObserverSource(codexHome string, selector ThreadSelector) (*observerSou
 		source.tails[thread.ID] = tail
 	}
 	return source, nil
+}
+
+func (source *observerSource) discoverNewRollouts() (bool, error) {
+	source.mu.Lock()
+	defer source.mu.Unlock()
+	return source.discoverNewRolloutsLocked()
+}
+
+func (source *observerSource) discoverNewRolloutsLocked() (bool, error) {
+	paths, err := listRolloutPaths(source.codexHome)
+	if err != nil {
+		return false, err
+	}
+	added := false
+	for _, path := range paths {
+		if source.knownPaths[path] {
+			continue
+		}
+		record, _, identified, err := inspectRolloutMetadata(path)
+		if err != nil {
+			return false, err
+		}
+		if !identified {
+			continue
+		}
+		source.knownPaths[path] = true
+		source.records = append(source.records, record)
+		added = true
+	}
+	if !added || source.rootID == "" {
+		return false, nil
+	}
+
+	tree, err := reconstructExecutionTree(source.records, source.rootID)
+	if err != nil {
+		return false, err
+	}
+	previous := make(map[string]AgentNode, len(source.world.Agents))
+	for _, node := range source.world.Agents {
+		previous[node.ID] = node
+	}
+	next := tree.normalizedWorld()
+	worldChanged := len(next.Agents) != len(source.world.Agents)
+	for index := range next.Agents {
+		if node, exists := previous[next.Agents[index].ID]; exists {
+			next.Agents[index] = node
+		}
+	}
+	for _, thread := range tree.Threads {
+		if source.tails[thread.ID] != nil || thread.RolloutPath == "" {
+			continue
+		}
+		tail, err := openJSONLTail(thread.RolloutPath, true)
+		if err != nil {
+			return false, fmt.Errorf("tail new thread %s: %w", thread.ID, err)
+		}
+		source.tails[thread.ID] = tail
+	}
+	source.world = next
+	if worldChanged {
+		source.revision++
+	}
+	return worldChanged, nil
 }
 
 func (source *observerSource) threadRecords() []ThreadRecord {
@@ -61,6 +140,16 @@ func (source *observerSource) poll() (bool, error) {
 	defer source.mu.Unlock()
 
 	changed := false
+	now := time.Now()
+	if source.nextDiscovery.IsZero() || !now.Before(source.nextDiscovery) {
+		source.nextDiscovery = now.Add(source.discoveryInterval)
+		discovered, err := source.discoverNewRolloutsLocked()
+		if err != nil {
+			return false, fmt.Errorf("discover live rollouts: %w", err)
+		}
+		changed = discovered
+	}
+	activityChanged := false
 	for index := range source.world.Agents {
 		node := &source.world.Agents[index]
 		tail := source.tails[node.ID]
@@ -73,14 +162,20 @@ func (source *observerSource) poll() (bool, error) {
 		}
 		for _, record := range records {
 			if reduceRolloutActivity(node, record) {
-				changed = true
+				activityChanged = true
 			}
 		}
 	}
-	if changed {
+	if activityChanged {
 		source.revision++
 	}
-	return changed, nil
+	return changed || activityChanged, nil
+}
+
+func (source *observerSource) forceDiscoveryOnNextPoll() {
+	source.mu.Lock()
+	defer source.mu.Unlock()
+	source.nextDiscovery = time.Time{}
 }
 
 func (source *observerSource) worldRevision() uint64 {
