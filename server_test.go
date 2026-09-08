@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -240,5 +242,42 @@ func TestDemoServerKeepsWebSocketOpenAfterInitialSnapshot(t *testing.T) {
 	defer cancel()
 	if err := connection.Ping(pingContext); err != nil {
 		t.Fatalf("ping after snapshot = %v, want open connection", err)
+	}
+}
+
+func TestObserverServerStreamsSnapshotAfterRolloutAppend(t *testing.T) {
+	home := t.TempDir()
+	day := filepath.Join(home, "sessions", "2026", "09", "08")
+	if err := os.MkdirAll(day, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(day, "rollout-root.jsonl")
+	writeRolloutFixture(t, path, `{"timestamp":"2026-09-08T10:00:00Z","type":"session_meta","payload":{"id":"root","cwd":"/workspace/app","source":"cli"}}`+"\n")
+	source, err := openObserverSource(home, ThreadSelector{ThreadID: "root"})
+	if err != nil {
+		t.Fatalf("open observer source: %v", err)
+	}
+	server := httptest.NewServer(newServerWithSource(source))
+	t.Cleanup(server.Close)
+
+	connection, _, err := websocket.Dial(context.Background(), "ws"+strings.TrimPrefix(server.URL, "http")+"/ws", nil)
+	if err != nil {
+		t.Fatalf("dial observer WebSocket: %v", err)
+	}
+	t.Cleanup(func() { _ = connection.Close(websocket.StatusNormalClosure, "") })
+	var initial WorldSnapshot
+	if err := wsjson.Read(context.Background(), connection, &initial); err != nil {
+		t.Fatalf("read initial snapshot: %v", err)
+	}
+	appendFile(t, path, `{"timestamp":"2026-09-08T10:01:00Z","type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"private command"}}`+"\n")
+
+	readContext, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	var updated WorldSnapshot
+	if err := wsjson.Read(readContext, connection, &updated); err != nil {
+		t.Fatalf("read live snapshot: %v", err)
+	}
+	if len(updated.Agents) != 1 || updated.Agents[0].ActivityKind != "tool" || updated.Agents[0].LifecycleState != "running" {
+		t.Fatalf("live snapshot = %+v, want running tool activity", updated)
 	}
 }

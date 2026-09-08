@@ -125,6 +125,7 @@ func inspectRolloutMetadata(path string) (ThreadRecord, int, bool, error) {
 			continue
 		}
 		record.ID = metadata.ID
+		record.RolloutPath = path
 		record.SessionID = metadata.SessionID
 		record.ParentThreadID = metadata.ParentThreadID
 		record.ForkedFromID = metadata.ForkedFromID

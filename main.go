@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"nhooyr.io/websocket"
 	"nhooyr.io/websocket/wsjson"
@@ -41,6 +42,12 @@ type normalizedWorldSource interface {
 type worldSource interface {
 	normalizedWorldSource
 	threadRecordSource
+}
+
+type liveWorldSource interface {
+	normalizedWorldSource
+	poll() (bool, error)
+	worldRevision() uint64
 }
 
 type WorldSnapshot struct {
@@ -181,14 +188,33 @@ func serveSnapshot(w http.ResponseWriter, r *http.Request, source normalizedWorl
 		log.Printf("write demo snapshot: %v", err)
 		return
 	}
-
-	for {
-		_, _, err := connection.Read(r.Context())
-		if err != nil {
-			return
-		}
-		_ = connection.Close(websocket.StatusPolicyViolation, "demo WebSocket is server-only")
+	readContext := connection.CloseRead(r.Context())
+	live, isLive := source.(liveWorldSource)
+	if !isLive {
+		<-readContext.Done()
 		return
+	}
+
+	revision := live.worldRevision()
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-readContext.Done():
+			return
+		case <-ticker.C:
+			if _, err := live.poll(); err != nil {
+				log.Printf("poll Observer source: %v", err)
+				continue
+			}
+			if live.worldRevision() == revision {
+				continue
+			}
+			revision = live.worldRevision()
+			if err := wsjson.Write(r.Context(), connection, worldSnapshot(source)); err != nil {
+				return
+			}
+		}
 	}
 }
 

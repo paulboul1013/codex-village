@@ -19,6 +19,7 @@ type ThreadRecord struct {
 	ForkedFromID   string
 	CWD            string
 	LastActivityAt time.Time
+	RolloutPath    string
 	Agent          AgentNode
 }
 
