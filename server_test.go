@@ -52,6 +52,11 @@ func TestDemoServerServesHealthAndCanvas(t *testing.T) {
 	if !strings.Contains(string(pageBody), "<canvas") {
 		t.Fatalf("demo page does not contain a Canvas: %s", pageBody)
 	}
+	for _, contract := range []string{"render_game_to_text", "advanceTime", "requestFullscreen", "activityKind", "lifecycleState"} {
+		if !strings.Contains(string(pageBody), contract) {
+			t.Fatalf("game page missing runtime contract %q", contract)
+		}
+	}
 }
 
 func TestDemoServerSelectsSafeTreeByHTTP(t *testing.T) {

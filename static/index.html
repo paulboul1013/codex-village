@@ -1,63 +1,32 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>codex-village</title>
-    <link rel="icon" href="data:,">
-    <style>
-      :root { background: #172833; color: #f8f2d7; font-family: monospace; }
-      body { display: grid; min-height: 100vh; margin: 0; place-items: center; }
-      main { display: grid; gap: 12px; justify-items: center; }
-      canvas { background: #4f8d63; image-rendering: pixelated; max-width: min(96vw, 960px); width: 100%; }
-    </style>
-  </head>
-  <body>
-    <main>
-      <canvas id="world" width="480" height="270" aria-label="codex-village demo world"></canvas>
-      <output id="status">connecting to demo world…</output>
-    </main>
-    <script>
-      const canvas = document.querySelector("#world");
-      const context = canvas.getContext("2d");
-      const status = document.querySelector("#status");
-
-      function draw(snapshot) {
-        context.fillStyle = "#285d4b";
-        context.fillRect(0, 0, canvas.width, canvas.height);
-        context.font = "10px monospace";
-
-        snapshot.agents.forEach((agent, index) => {
-          const isRoot = agent.role === "root";
-          const x = isRoot ? 240 : 110 + index * 130;
-          const y = isRoot ? 108 : 190;
-
-          context.fillStyle = isRoot ? "#f8d66d" : "#d98153";
-          context.fillRect(x - 20, y - 18, 40, 36);
-          context.fillStyle = "#fff4cf";
-          context.fillText(isRoot ? "HQ" : "WORK", x - 12, y + 4);
-          context.fillText(agent.name, x - 24, y + 34);
-
-          if (!isRoot) {
-            context.strokeStyle = "#f8d66d";
-            context.beginPath();
-            context.moveTo(240, 126);
-            context.lineTo(x, y - 18);
-            context.stroke();
-          }
-        });
-      }
-
-      const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-      const socket = new WebSocket(protocol + "//" + location.host + "/ws");
-      socket.addEventListener("message", (event) => {
-        const snapshot = JSON.parse(event.data);
-        draw(snapshot);
-        status.textContent = snapshot.agents.length + " demo agents connected";
-      });
-      socket.addEventListener("error", () => {
-        status.textContent = "demo world unavailable";
-      });
-    </script>
-  </body>
-</html>
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>codex-village — RTS observer</title><link rel="icon" href="data:,">
+  <style>
+    :root{background:#11140f;color:#e8d8a8;font-family:Georgia,serif}body{display:grid;min-height:100vh;margin:0;place-items:center;background:radial-gradient(circle at 50% 35%,#34422b,#11140f 72%)}main{display:grid;gap:10px;justify-items:center;width:min(96vw,1100px)}canvas{width:100%;border:3px ridge #8b6b32;box-shadow:0 14px 45px #000b;image-rendering:pixelated}output{color:#d8c896;font-size:14px;letter-spacing:.04em;text-shadow:1px 1px #000}
+  </style>
+</head>
+<body><main><canvas id="world" width="960" height="540" aria-label="Codex execution tree represented as an RTS base"></canvas><output id="status">Establishing scrying link…</output></main>
+<script>
+const canvas=document.querySelector("#world"),context=canvas.getContext("2d"),status=document.querySelector("#status");
+const state={agents:[],units:new Map(),time:0,connected:false,revision:0};let previousFrame=performance.now();
+function hash(text){let value=2166136261;for(const c of text)value=Math.imul(value^c.charCodeAt(0),16777619);return value>>>0}
+function layoutAgents(agents){const roots=agents.filter(a=>a.role==="root"),children=agents.filter(a=>a.role!=="root"),positions=new Map();roots.forEach((a,i)=>positions.set(a.id,{x:480+i*150,y:142}));children.forEach((a,i)=>{const columns=Math.min(5,Math.max(1,children.length)),row=Math.floor(i/columns),column=i%columns,width=(columns-1)*150;positions.set(a.id,{x:480-width/2+column*150,y:330+row*105})});return positions}
+function applySnapshot(snapshot){if(!snapshot||snapshot.type!=="snapshot"||!Array.isArray(snapshot.agents))return;const positions=layoutAgents(snapshot.agents);state.agents=snapshot.agents.map(a=>({...a}));for(const agent of state.agents){const target=positions.get(agent.id),existing=state.units.get(agent.id);if(existing){existing.agent=agent;existing.targetX=target.x;existing.targetY=target.y}else state.units.set(agent.id,{agent,x:480,y:210,targetX:target.x,targetY:target.y,seed:hash(agent.id)%1000})}for(const id of [...state.units.keys()])if(!state.agents.some(a=>a.id===id))state.units.delete(id);state.revision++}
+function update(dt){state.time+=dt;for(const unit of state.units.values()){const easing=Math.min(1,dt*5);unit.x+=(unit.targetX-unit.x)*easing;unit.y+=(unit.targetY-unit.y)*easing}}
+function drawTerrain(){const gradient=context.createLinearGradient(0,0,0,canvas.height);gradient.addColorStop(0,"#617d3c");gradient.addColorStop(1,"#344d28");context.fillStyle=gradient;context.fillRect(0,0,canvas.width,canvas.height);context.globalAlpha=.18;for(let y=0;y<canvas.height;y+=24)for(let x=(y/24%2)*12;x<canvas.width;x+=24){context.fillStyle=(hash(x+":"+y)%2)?"#a8b75d":"#233d21";context.fillRect(x,y,3,3)}context.globalAlpha=1;context.fillStyle="#403826";context.beginPath();context.ellipse(480,260,370,175,0,0,Math.PI*2);context.fill();context.strokeStyle="#76633c";context.lineWidth=7;context.stroke()}
+function drawConnections(){context.lineWidth=5;context.setLineDash([9,7]);for(const unit of state.units.values()){if(!unit.agent.parentId)continue;const parent=state.units.get(unit.agent.parentId);if(!parent)continue;context.strokeStyle=unit.agent.lifecycleState==="interrupted"?"#8f3128":"#b59a58";context.beginPath();context.moveTo(parent.x,parent.y+42);context.quadraticCurveTo(parent.x,unit.y-40,unit.x,unit.y-20);context.stroke()}context.setLineDash([])}
+function drawStateEffect(agent,x,y){if(agent.lifecycleState==="completed"){context.fillStyle="#d8bd45";context.beginPath();context.arc(x,y,8,0,Math.PI*2);context.fill();context.fillStyle="#fff2a0";context.fillRect(x-2,y-5,4,10);context.fillRect(x-5,y-2,10,4)}else if(agent.lifecycleState==="interrupted"){context.strokeStyle="#f05b45";context.lineWidth=4;context.beginPath();context.moveTo(x-7,y-7);context.lineTo(x+7,y+7);context.moveTo(x+7,y-7);context.lineTo(x-7,y+7);context.stroke()}else if(agent.activityKind==="reasoning"&&agent.presence==="active"){const radius=9+Math.sin(state.time*5)*3;context.strokeStyle="#b9e6ff";context.lineWidth=2;context.beginPath();context.arc(x,y,radius,0,Math.PI*2);context.stroke()}}
+function drawHeadquarters(unit){const pulse=1+Math.sin(state.time*2.5)*.025;context.save();context.translate(unit.x,unit.y);context.scale(pulse,pulse);context.fillStyle="#201b16";context.fillRect(-74,29,148,17);context.fillStyle="#82704b";context.fillRect(-62,-30,124,70);context.fillStyle="#42382a";context.fillRect(-76,-48,32,82);context.fillRect(44,-48,32,82);context.fillStyle="#967636";context.beginPath();context.moveTo(-72,-48);context.lineTo(-60,-72);context.lineTo(-48,-48);context.fill();context.beginPath();context.moveTo(48,-48);context.lineTo(60,-72);context.lineTo(72,-48);context.fill();context.fillStyle="#2d2118";context.fillRect(-18,4,36,36);context.fillStyle="#d9a53b";context.fillRect(-42,-16,18,20);context.fillRect(24,-16,18,20);context.fillStyle="#6f241f";context.fillRect(-5,-69,10,28);context.beginPath();context.moveTo(5,-67);context.lineTo(42,-56);context.lineTo(5,-45);context.fill();drawStateEffect(unit.agent,0,-79);context.restore()}
+function drawHammer(time){context.save();context.translate(18,1);context.rotate(-.6+Math.sin(time*10)*.65);context.fillStyle="#6d4b28";context.fillRect(-2,-3,29,6);context.fillStyle="#b8aa86";context.fillRect(21,-10,13,20);context.restore();if(Math.sin(time*10)>.82){context.fillStyle="#ffd45c";context.fillRect(35,12,4,4);context.fillRect(29,18,3,3)}}
+function drawResearchOrb(time){const x=25+Math.cos(time*4)*8,y=-18+Math.sin(time*4)*8;context.fillStyle="#7ee4df55";context.beginPath();context.arc(x,y,11,0,Math.PI*2);context.fill();context.fillStyle="#b9ffff";context.beginPath();context.arc(x,y,4,0,Math.PI*2);context.fill()}
+function drawWorker(unit){const agent=unit.agent,active=agent.presence==="active",bob=active?Math.sin(state.time*8+unit.seed)*3:0;context.save();context.translate(unit.x,unit.y+bob);context.globalAlpha=agent.presence==="sleeping"?.55:1;context.fillStyle="#17130e88";context.beginPath();context.ellipse(0,19-bob,25,9,0,0,Math.PI*2);context.fill();context.fillStyle=agent.lifecycleState==="interrupted"?"#83362c":"#36577a";context.fillRect(-15,-5,30,34);context.fillStyle="#b88956";context.beginPath();context.arc(0,-15,14,0,Math.PI*2);context.fill();context.fillStyle="#58452c";context.beginPath();context.arc(0,-19,15,Math.PI,Math.PI*2);context.fill();context.fillStyle="#b8a16b";context.fillRect(-19,25,14,8);context.fillRect(5,25,14,8);if(agent.activityKind==="tool"&&active)drawHammer(state.time);if(agent.activityKind==="research"&&active)drawResearchOrb(state.time);drawStateEffect(agent,0,-44);context.restore()}
+function drawLabels(){context.textAlign="center";context.font="bold 15px Georgia";for(const unit of state.units.values()){context.fillStyle="#0d0c09aa";context.fillRect(unit.x-62,unit.y+42,124,30);context.fillStyle="#f2dda1";context.fillText(unit.agent.name,unit.x,unit.y+57);context.font="11px Georgia";context.fillStyle="#c8b47d";context.fillText(unit.agent.lifecycleState+" · "+unit.agent.activityKind,unit.x,unit.y+69);context.font="bold 15px Georgia"}context.textAlign="start"}
+function render(){drawTerrain();drawConnections();for(const unit of state.units.values())unit.agent.role==="root"?drawHeadquarters(unit):drawWorker(unit);drawLabels();context.fillStyle="#17140dcc";context.fillRect(14,14,250,34);context.fillStyle="#dfc474";context.font="bold 18px Georgia";context.fillText("CODEX WAR CAMP",28,37);context.fillStyle=state.connected?"#8fd56d":"#c85846";context.beginPath();context.arc(245,31,6,0,Math.PI*2);context.fill()}
+function frame(now){update(Math.min(.05,(now-previousFrame)/1000));previousFrame=now;render();requestAnimationFrame(frame)}
+window.advanceTime=ms=>{const steps=Math.max(1,Math.round(ms/(1000/60)));for(let i=0;i<steps;i++)update(1/60);render()};
+window.render_game_to_text=()=>JSON.stringify({coordinateSystem:"origin top-left; x right; y down; canvas 960x540",connected:state.connected,revision:state.revision,agents:[...state.units.values()].map(unit=>({id:unit.agent.id,parentId:unit.agent.parentId||null,role:unit.agent.role,lifecycleState:unit.agent.lifecycleState,activityKind:unit.agent.activityKind,presence:unit.agent.presence,x:Math.round(unit.x),y:Math.round(unit.y)}))});
+document.addEventListener("keydown",event=>{if(event.key.toLowerCase()==="f"){if(document.fullscreenElement)document.exitFullscreen();else canvas.requestFullscreen()}});
+const protocol=location.protocol==="https:"?"wss:":"ws:",socket=new WebSocket(protocol+"//"+location.host+"/ws");socket.addEventListener("open",()=>{state.connected=true;status.textContent="Scrying link established · F toggles fullscreen"});socket.addEventListener("message",event=>applySnapshot(JSON.parse(event.data)));socket.addEventListener("close",()=>{state.connected=false;status.textContent="Scrying link lost"});socket.addEventListener("error",()=>{state.connected=false;status.textContent="Observer unavailable"});render();requestAnimationFrame(frame);
+</script></body></html>
