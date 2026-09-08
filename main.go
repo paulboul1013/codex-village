@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -46,7 +47,6 @@ type worldSource interface {
 
 type liveWorldSource interface {
 	normalizedWorldSource
-	poll() (bool, error)
 	worldRevision() uint64
 }
 
@@ -203,10 +203,6 @@ func serveSnapshot(w http.ResponseWriter, r *http.Request, source normalizedWorl
 		case <-readContext.Done():
 			return
 		case <-ticker.C:
-			if _, err := live.poll(); err != nil {
-				log.Printf("poll Observer source: %v", err)
-				continue
-			}
 			if live.worldRevision() == revision {
 				continue
 			}
@@ -289,6 +285,11 @@ func main() {
 		if err != nil {
 			log.Fatalf("open Observer mode: %v", err)
 		}
+		go func() {
+			if err := observer.run(context.Background()); err != nil {
+				log.Printf("Observer loop stopped: %v", err)
+			}
+		}()
 		source = observer
 		mode = "observer"
 	}

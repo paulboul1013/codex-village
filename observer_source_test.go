@@ -1,10 +1,44 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
+
+func TestObserverSourceRunPollsWithoutWebSocketClients(t *testing.T) {
+	home := t.TempDir()
+	day := filepath.Join(home, "sessions", "2026", "09", "08")
+	if err := os.MkdirAll(day, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(day, "rollout-root.jsonl")
+	writeRolloutFixture(t, path, `{"timestamp":"2026-09-08T10:00:00Z","type":"session_meta","payload":{"id":"root","cwd":"/workspace/app","source":"cli"}}`+"\n")
+	source, err := openObserverSource(home, ThreadSelector{ThreadID: "root"})
+	if err != nil {
+		t.Fatalf("open observer source: %v", err)
+	}
+	source.pollInterval = 10 * time.Millisecond
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- source.run(ctx) }()
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
+
+	appendFile(t, path, `{"timestamp":"2026-09-08T10:01:00Z","type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"private"}}`+"\n")
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if source.normalizedWorld().Agents[0].ActivityKind == "tool" {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("background Observer loop did not apply activity: %+v", source.normalizedWorld().Agents[0])
+}
 
 func TestOpenObserverSourceBuildsSelectedWorldFromRollouts(t *testing.T) {
 	home := t.TempDir()

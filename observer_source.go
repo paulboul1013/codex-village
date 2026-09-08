@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -17,6 +18,7 @@ type observerSource struct {
 	revision          uint64
 	nextDiscovery     time.Time
 	discoveryInterval time.Duration
+	pollInterval      time.Duration
 }
 
 func openObserverSource(codexHome string, selector ThreadSelector) (*observerSource, error) {
@@ -30,6 +32,7 @@ func openObserverSource(codexHome string, selector ThreadSelector) (*observerSou
 		tails:             make(map[string]*jsonlTail),
 		knownPaths:        make(map[string]bool),
 		discoveryInterval: time.Second,
+		pollInterval:      250 * time.Millisecond,
 	}
 	for _, record := range catalog.Records {
 		source.knownPaths[record.RolloutPath] = true
@@ -58,6 +61,21 @@ func openObserverSource(codexHome string, selector ThreadSelector) (*observerSou
 		source.tails[thread.ID] = tail
 	}
 	return source, nil
+}
+
+func (source *observerSource) run(ctx context.Context) error {
+	ticker := time.NewTicker(source.pollInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			if _, err := source.poll(); err != nil {
+				return err
+			}
+		}
+	}
 }
 
 func (source *observerSource) discoverNewRollouts() (bool, error) {

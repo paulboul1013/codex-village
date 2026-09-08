@@ -13,6 +13,7 @@ Original prompt: 建立 codex-village，以空間化世界即時視覺化 Codex 
 - Live activity normalization and WebSocket snapshot updates.
 - Live rollout discovery attaches newly spawned and nested descendants to the selected tree without admitting unrelated sessions.
 - Newly discovered files rehydrate one current safe state without replaying historical events as animations.
+- A single process-owned Observer loop tails and discovers rollouts even with no browser connected; WebSocket clients only observe shared revisions.
 
 ## Current slice
 
@@ -35,3 +36,11 @@ Original prompt: 建立 codex-village，以空間化世界即時視覺化 Codex 
 - Human inspection of both screenshots confirmed that no worker units appeared or moved.
 - Root cause: the current Observer source catalogs rollout files only at startup; its polling loop tails only files already selected then. Implement live rollout discovery before treating real subagent spawn animation as working.
 - Resolution implemented after this test: poll for new rollout paths once per second, validate parent relationships, attach true descendants, and broadcast the revised snapshot. A fresh three-subagent visual test still requires restarting the older running server binary.
+
+## Three-agent review and visual retest (2026-09-08)
+
+- Spawned three review agents after restarting the updated Observer server; the selected tree grew to seven agents (root, three earlier completed workers, and three active reviewers).
+- Playwright captured three consecutive frames. Human inspection confirmed worker entry movement, reasoning rings, tool hammer animation, completion markers, parent paths, and a clean console.
+- Completed review priority: Observer polling is decoupled from WebSocket clients into one process-owned loop. Next complete waiting/approval/failure/delegation normalization and nested spatial layout.
+- Observer hardening still needs archive/rename handling, per-generation contribution rebuild, inherited-history boundaries, and bounded metadata discovery.
+- Product spec needs separate Observer V1 versus full-product Definition of Done, plus one canonical HTTP API naming scheme.

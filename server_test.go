@@ -262,6 +262,7 @@ func TestObserverServerStreamsSnapshotAfterRolloutAppend(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open observer source: %v", err)
 	}
+	startObserverLoopForTest(t, source)
 	server := httptest.NewServer(newServerWithSource(source))
 	t.Cleanup(server.Close)
 
@@ -298,6 +299,7 @@ func TestObserverServerStreamsNewChildDiscoveredAfterConnection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open observer source: %v", err)
 	}
+	startObserverLoopForTest(t, source)
 	server := httptest.NewServer(newServerWithSource(source))
 	t.Cleanup(server.Close)
 	connection, _, err := websocket.Dial(context.Background(), "ws"+strings.TrimPrefix(server.URL, "http")+"/ws", nil)
@@ -321,4 +323,18 @@ func TestObserverServerStreamsNewChildDiscoveredAfterConnection(t *testing.T) {
 	if len(updated.Agents) != 2 || updated.Agents[1].ID != "child" || updated.Agents[1].ParentID != "root" {
 		t.Fatalf("discovered-child snapshot = %+v, want attached worker", updated)
 	}
+}
+
+func startObserverLoopForTest(t *testing.T, source *observerSource) {
+	t.Helper()
+	source.pollInterval = 10 * time.Millisecond
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- source.run(ctx) }()
+	t.Cleanup(func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Errorf("Observer loop: %v", err)
+		}
+	})
 }
