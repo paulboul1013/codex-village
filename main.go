@@ -8,6 +8,8 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -36,12 +38,21 @@ type normalizedWorldSource interface {
 	normalizedWorld() normalizedWorld
 }
 
+type worldSource interface {
+	normalizedWorldSource
+	threadRecordSource
+}
+
 type WorldSnapshot struct {
 	Type   string      `json:"type"`
 	Agents []AgentNode `json:"agents"`
 }
 
 func newServer() http.Handler {
+	return newServerWithSource(demoSource{})
+}
+
+func newServerWithSource(source worldSource) http.Handler {
 	staticRoot, err := fs.Sub(staticFiles, "static")
 	if err != nil {
 		panic(err)
@@ -58,9 +69,11 @@ func newServer() http.Handler {
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	})
 	mux.HandleFunc("/api/tree", func(w http.ResponseWriter, r *http.Request) {
-		serveTreeSelection(w, r, demoSource{})
+		serveTreeSelection(w, r, source)
 	})
-	mux.HandleFunc("/ws", serveDemoSnapshot)
+	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		serveSnapshot(w, r, source)
+	})
 	mux.Handle("/", http.FileServer(http.FS(staticRoot)))
 	return mux
 }
@@ -156,7 +169,7 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 	_ = json.NewEncoder(w).Encode(value)
 }
 
-func serveDemoSnapshot(w http.ResponseWriter, r *http.Request) {
+func serveSnapshot(w http.ResponseWriter, r *http.Request, source normalizedWorldSource) {
 	connection, err := websocket.Accept(w, r, nil)
 	if err != nil {
 		log.Printf("accept demo WebSocket: %v", err)
@@ -164,7 +177,7 @@ func serveDemoSnapshot(w http.ResponseWriter, r *http.Request) {
 	}
 	defer connection.Close(websocket.StatusNormalClosure, "")
 
-	if err := wsjson.Write(r.Context(), connection, demoSnapshot()); err != nil {
+	if err := wsjson.Write(r.Context(), connection, worldSnapshot(source)); err != nil {
 		log.Printf("write demo snapshot: %v", err)
 		return
 	}
@@ -236,13 +249,32 @@ func worldSnapshot(source normalizedWorldSource) WorldSnapshot {
 
 func main() {
 	demo := flag.Bool("demo", false, "run the deterministic demo world")
+	codexHome := flag.String("codex-home", defaultCodexHome(), "Codex data directory for Observer mode")
+	threadID := flag.String("thread", "", "root thread ID to observe")
+	latest := flag.Bool("latest", false, "observe the latest eligible root thread")
+	cwd := flag.String("cwd", "", "filter Observer roots by working directory")
 	listen := flag.String("listen", "0.0.0.0:8040", "HTTP listen address")
 	flag.Parse()
 
+	var source worldSource = demoSource{}
+	mode := "demo"
 	if !*demo {
-		log.Fatal("this build currently supports --demo only")
+		observer, err := openObserverSource(*codexHome, ThreadSelector{ThreadID: *threadID, Latest: *latest, CWD: *cwd})
+		if err != nil {
+			log.Fatalf("open Observer mode: %v", err)
+		}
+		source = observer
+		mode = "observer"
 	}
 
-	log.Printf("codex-village demo listening on http://%s", *listen)
-	log.Fatal(http.ListenAndServe(*listen, newServer()))
+	log.Printf("codex-village %s listening on http://%s", mode, *listen)
+	log.Fatal(http.ListenAndServe(*listen, newServerWithSource(source)))
+}
+
+func defaultCodexHome() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ".codex"
+	}
+	return filepath.Join(home, ".codex")
 }
