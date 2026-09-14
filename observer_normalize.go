@@ -4,6 +4,7 @@ import "encoding/json"
 
 type rolloutActivityPayload struct {
 	Type   string          `json:"type"`
+	Name   string          `json:"name"`
 	Status string          `json:"status"`
 	Action json.RawMessage `json:"action"`
 }
@@ -26,7 +27,14 @@ func reduceRolloutActivity(node *AgentNode, record json.RawMessage) bool {
 	switch envelope.Type + "/" + payload.Type {
 	case "event_msg/task_started", "event_msg/agent_reasoning", "response_item/reasoning":
 		setAgentActivity(node, "running", "reasoning", "active")
-	case "response_item/function_call", "response_item/custom_tool_call", "response_item/function_call_output", "response_item/custom_tool_call_output":
+	case "response_item/function_call":
+		if payload.Name == "request_user_input" {
+			setAgentActivity(node, "waiting", "unknown", "idle")
+			node.AttentionState = "waiting_for_input"
+			break
+		}
+		setAgentActivity(node, "running", "tool", "active")
+	case "response_item/custom_tool_call", "response_item/function_call_output", "response_item/custom_tool_call_output":
 		setAgentActivity(node, "running", "tool", "active")
 	case "response_item/web_search_call":
 		setAgentActivity(node, "running", "research", "active")
