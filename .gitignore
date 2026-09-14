@@ -1,0 +1,8 @@
+# Local autoresearch run-control artifacts.
+autoresearch-launch.json
+autoresearch-lessons.md
+autoresearch-runtime.json
+autoresearch-runtime.log
+autoresearch-state.json
+research-results.tsv
+
