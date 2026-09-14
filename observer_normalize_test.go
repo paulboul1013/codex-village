@@ -70,6 +70,7 @@ func TestReduceRolloutActivityMapsObserverP0SignalsWithoutLeakingPayloads(t *tes
 		{"waiting approval", `{"type":"event_msg","payload":{"type":"approval_request","command":"private command"}}`, "waiting", "tool", "waiting_for_approval"},
 		{"explicit failure", `{"type":"event_msg","payload":{"type":"turn_failed","error":"private error"}}`, "failed", "unknown", "none"},
 		{"delegation started", `{"type":"event_msg","payload":{"type":"sub_agent_activity","status":"started","agent_id":"private-child"}}`, "running", "delegation", "none"},
+		{"real rollout delegation", `{"type":"response_item","payload":{"type":"function_call","name":"spawn_agent","arguments":"private delegated task","call_id":"call-2"}}`, "running", "delegation", "none"},
 		{"delegation waiting", `{"type":"event_msg","payload":{"type":"sub_agent_activity","action":"waiting","message":"private message"}}`, "waiting", "delegation", "waiting_for_input"},
 	}
 	for _, test := range tests {

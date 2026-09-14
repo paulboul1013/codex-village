@@ -33,6 +33,10 @@ func reduceRolloutActivity(node *AgentNode, record json.RawMessage) bool {
 			node.AttentionState = "waiting_for_input"
 			break
 		}
+		if isDelegationTool(payload.Name) {
+			setAgentActivity(node, "running", "delegation", "active")
+			break
+		}
 		setAgentActivity(node, "running", "tool", "active")
 	case "response_item/custom_tool_call", "response_item/function_call_output", "response_item/custom_tool_call_output":
 		setAgentActivity(node, "running", "tool", "active")
@@ -59,6 +63,15 @@ func reduceRolloutActivity(node *AgentNode, record json.RawMessage) bool {
 		return false
 	}
 	return true
+}
+
+func isDelegationTool(name string) bool {
+	switch name {
+	case "spawn_agent", "followup_task", "send_message", "interrupt_agent", "close_agent", "wait_agent":
+		return true
+	default:
+		return false
+	}
 }
 
 func setAgentActivity(node *AgentNode, lifecycle, activity, presence string) {
