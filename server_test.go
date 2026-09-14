@@ -52,7 +52,7 @@ func TestDemoServerServesHealthAndCanvas(t *testing.T) {
 	if !strings.Contains(string(pageBody), "<canvas") {
 		t.Fatalf("demo page does not contain a Canvas: %s", pageBody)
 	}
-	for _, contract := range []string{"render_game_to_text", "advanceTime", "requestFullscreen", "activityKind", "lifecycleState"} {
+	for _, contract := range []string{"render_game_to_text", "advanceTime", "requestFullscreen", "activityKind", "lifecycleState", "attentionState", "depth.set(child.id"} {
 		if !strings.Contains(string(pageBody), contract) {
 			t.Fatalf("game page missing runtime contract %q", contract)
 		}
@@ -216,6 +216,7 @@ func TestDemoSnapshotSerializesOnlySafeFields(t *testing.T) {
 	allowedAgentFields := map[string]bool{
 		"id": true, "parentId": true, "name": true, "role": true,
 		"lifecycleState": true, "activityKind": true, "presence": true,
+		"attentionState": true,
 	}
 	for _, agent := range agents {
 		for field := range agent {

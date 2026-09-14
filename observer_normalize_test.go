@@ -60,3 +60,30 @@ func TestReduceRolloutActivityIgnoresUnknownAndUserContent(t *testing.T) {
 		t.Fatalf("ignored records changed node: %+v", node)
 	}
 }
+
+func TestReduceRolloutActivityMapsObserverP0SignalsWithoutLeakingPayloads(t *testing.T) {
+	tests := []struct {
+		name, record, lifecycle, activity, attention string
+	}{
+		{"waiting input", `{"type":"event_msg","payload":{"type":"request_user_input","question":"private question"}}`, "waiting", "unknown", "waiting_for_input"},
+		{"waiting approval", `{"type":"event_msg","payload":{"type":"approval_request","command":"private command"}}`, "waiting", "tool", "waiting_for_approval"},
+		{"explicit failure", `{"type":"event_msg","payload":{"type":"turn_failed","error":"private error"}}`, "failed", "unknown", "none"},
+		{"delegation started", `{"type":"event_msg","payload":{"type":"sub_agent_activity","status":"started","agent_id":"private-child"}}`, "running", "delegation", "none"},
+		{"delegation waiting", `{"type":"event_msg","payload":{"type":"sub_agent_activity","action":"waiting","message":"private message"}}`, "waiting", "delegation", "waiting_for_input"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			node := AgentNode{ID: "agent", AttentionState: "none"}
+			if !reduceRolloutActivity(&node, json.RawMessage(test.record)) {
+				t.Fatal("record was not accepted")
+			}
+			if node.LifecycleState != test.lifecycle || node.ActivityKind != test.activity || node.AttentionState != test.attention {
+				t.Fatalf("node = %+v", node)
+			}
+			encoded, err := json.Marshal(node)
+			if err != nil || strings.Contains(string(encoded), "private") {
+				t.Fatalf("safe node leaked input: %s (%v)", encoded, err)
+			}
+		})
+	}
+}

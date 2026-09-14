@@ -157,7 +157,7 @@ func inspectRolloutMetadata(path string) (ThreadRecord, int, bool, error) {
 		if record.ParentThreadID != "" {
 			role = "subagent"
 		}
-		record.Agent = AgentNode{ID: metadata.ID, Name: name, Role: role, LifecycleState: "unknown", ActivityKind: "unknown", Presence: "idle"}
+		record.Agent = AgentNode{ID: metadata.ID, Name: name, Role: role, LifecycleState: "unknown", ActivityKind: "unknown", Presence: "idle", AttentionState: "none"}
 		if record.LastActivityAt.IsZero() {
 			record.LastActivityAt, _ = time.Parse(time.RFC3339Nano, metadata.Timestamp)
 		}

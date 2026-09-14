@@ -30,6 +30,7 @@ type AgentNode struct {
 	LifecycleState string `json:"lifecycleState"`
 	ActivityKind   string `json:"activityKind"`
 	Presence       string `json:"presence"`
+	AttentionState string `json:"attentionState"`
 }
 
 type normalizedWorld struct {

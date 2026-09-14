@@ -24,7 +24,7 @@ Original prompt: 建立 codex-village，以空間化世界即時視覺化 Codex 
 
 ## TODO
 
-- Normalize waiting, approval, explicit failure, delegation, and nested spawn events.
+- Completed Observer semantic acceptance: input/approval attention, explicit failure, delegation activity, and parent-depth spatial layout are normalized and covered by tests.
 - Add reconnect and quiet/idle timing behavior.
 - Build Managed mode through Codex App Server.
 
@@ -41,6 +41,6 @@ Original prompt: 建立 codex-village，以空間化世界即時視覺化 Codex 
 
 - Spawned three review agents after restarting the updated Observer server; the selected tree grew to seven agents (root, three earlier completed workers, and three active reviewers).
 - Playwright captured three consecutive frames. Human inspection confirmed worker entry movement, reasoning rings, tool hammer animation, completion markers, parent paths, and a clean console.
-- Completed review priority: Observer polling is decoupled from WebSocket clients into one process-owned loop. Next complete waiting/approval/failure/delegation normalization and nested spatial layout.
+- Completed review priority: Observer polling is decoupled from WebSocket clients into one process-owned loop; attention/failure/delegation normalization and nested spatial layout are complete.
 - Observer hardening still needs archive/rename handling, per-generation contribution rebuild, inherited-history boundaries, and bounded metadata discovery.
 - Product spec needs separate Observer V1 versus full-product Definition of Done, plus one canonical HTTP API naming scheme.
