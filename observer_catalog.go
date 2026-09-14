@@ -83,17 +83,22 @@ func discoverRolloutThreads(codexHome string) (rolloutCatalog, error) {
 
 func listRolloutPaths(codexHome string) ([]string, error) {
 	paths := make([]string, 0)
-	err := filepath.WalkDir(filepath.Join(codexHome, "sessions"), func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
+	for _, root := range []string{"sessions", "archived_sessions"} {
+		err := filepath.WalkDir(filepath.Join(codexHome, root), func(path string, entry fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				if os.IsNotExist(walkErr) {
+					return nil
+				}
+				return walkErr
+			}
+			if entry.Type().IsRegular() && strings.HasPrefix(entry.Name(), "rollout-") && strings.HasSuffix(entry.Name(), ".jsonl") {
+				paths = append(paths, path)
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, fmt.Errorf("scan Codex %s: %w", root, err)
 		}
-		if entry.Type().IsRegular() && strings.HasPrefix(entry.Name(), "rollout-") && strings.HasSuffix(entry.Name(), ".jsonl") {
-			paths = append(paths, path)
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("scan Codex sessions: %w", err)
 	}
 	sort.Strings(paths)
 	return paths, nil

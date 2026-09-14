@@ -169,3 +169,82 @@ func TestObserverSourceLeavesUnrelatedNewRolloutOutsideSelectedTree(t *testing.T
 		t.Fatalf("unrelated rollout changed selected world: %+v", source.normalizedWorld().Agents)
 	}
 }
+
+func TestObserverSourceFollowsRolloutMovedIntoArchive(t *testing.T) {
+	home := t.TempDir()
+	day := filepath.Join(home, "sessions", "2026", "09", "14")
+	archive := filepath.Join(home, "archived_sessions")
+	if err := os.MkdirAll(day, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(archive, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	activePath := filepath.Join(day, "rollout-root.jsonl")
+	writeRolloutFixture(t, activePath, `{"timestamp":"2026-09-14T10:00:00Z","type":"session_meta","payload":{"id":"root","cwd":"/workspace/app","source":"cli"}}`+"\n")
+	source, err := openObserverSource(home, ThreadSelector{ThreadID: "root"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	archivePath := filepath.Join(archive, "rollout-root.jsonl")
+	if err := os.Rename(activePath, archivePath); err != nil {
+		t.Fatal(err)
+	}
+	appendFile(t, archivePath, `{"timestamp":"2026-09-14T10:01:00Z","type":"event_msg","payload":{"type":"task_complete"}}`+"\n")
+	source.forceDiscoveryOnNextPoll()
+	changed, err := source.poll()
+	if err != nil {
+		t.Fatalf("poll archived rollout: %v", err)
+	}
+	if !changed || source.normalizedWorld().Agents[0].LifecycleState != "completed" {
+		t.Fatalf("archived rollout was not followed: %+v", source.normalizedWorld())
+	}
+}
+
+func TestObserverSourceRetiresMissingCompletedRollout(t *testing.T) {
+	home := t.TempDir()
+	day := filepath.Join(home, "sessions", "2026", "09", "14")
+	if err := os.MkdirAll(day, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(day, "rollout-root.jsonl")
+	writeRolloutFixture(t, path, `{"timestamp":"2026-09-14T10:00:00Z","type":"session_meta","payload":{"id":"root","cwd":"/workspace/app","source":"cli"}}`+"\n"+`{"timestamp":"2026-09-14T10:01:00Z","type":"event_msg","payload":{"type":"task_complete"}}`+"\n")
+	source, err := openObserverSource(home, ThreadSelector{ThreadID: "root"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := source.poll(); err != nil {
+		t.Fatalf("retire missing completed rollout: %v", err)
+	}
+	if source.tails["root"] != nil || source.normalizedWorld().Agents[0].LifecycleState != "completed" {
+		t.Fatalf("completed rollout not retired safely: tails=%v world=%+v", source.tails, source.normalizedWorld())
+	}
+}
+
+func TestObserverSourceRebuildsNodeAfterFileGenerationReplacement(t *testing.T) {
+	home := t.TempDir()
+	day := filepath.Join(home, "sessions", "2026", "09", "14")
+	if err := os.MkdirAll(day, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(day, "rollout-root.jsonl")
+	writeRolloutFixture(t, path, `{"timestamp":"2026-09-14T10:00:00Z","type":"session_meta","payload":{"id":"root","cwd":"/workspace/app","source":"cli"}}`+"\n"+`{"timestamp":"2026-09-14T10:01:00Z","type":"event_msg","payload":{"type":"task_complete"}}`+"\n")
+	source, err := openObserverSource(home, ThreadSelector{ThreadID: "root"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	replacement := filepath.Join(day, "replacement.jsonl")
+	writeRolloutFixture(t, replacement, `{"timestamp":"2026-09-14T10:02:00Z","type":"session_meta","payload":{"id":"root","cwd":"/workspace/app","source":"cli"}}`+"\n")
+	if err := os.Rename(replacement, path); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := source.poll(); err != nil {
+		t.Fatal(err)
+	}
+	if got := source.normalizedWorld().Agents[0].LifecycleState; got != "unknown" {
+		t.Fatalf("replacement retained stale lifecycle %q, want rebuilt unknown", got)
+	}
+}

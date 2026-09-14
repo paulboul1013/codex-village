@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 )
@@ -90,6 +92,7 @@ func (source *observerSource) discoverNewRolloutsLocked() (bool, error) {
 		return false, err
 	}
 	added := false
+	refreshed := make(map[string]bool)
 	for _, path := range paths {
 		if source.knownPaths[path] {
 			continue
@@ -102,7 +105,19 @@ func (source *observerSource) discoverNewRolloutsLocked() (bool, error) {
 			continue
 		}
 		source.knownPaths[path] = true
-		source.records = append(source.records, record)
+		replaced := false
+		for index := range source.records {
+			if source.records[index].ID != record.ID {
+				continue
+			}
+			source.records[index] = record
+			refreshed[record.ID] = true
+			replaced = true
+			break
+		}
+		if !replaced {
+			source.records = append(source.records, record)
+		}
 		added = true
 	}
 	if !added || source.rootID == "" {
@@ -120,12 +135,18 @@ func (source *observerSource) discoverNewRolloutsLocked() (bool, error) {
 	next := tree.normalizedWorld()
 	worldChanged := len(next.Agents) != len(source.world.Agents)
 	for index := range next.Agents {
-		if node, exists := previous[next.Agents[index].ID]; exists {
+		if node, exists := previous[next.Agents[index].ID]; exists && !refreshed[next.Agents[index].ID] {
 			next.Agents[index] = node
+		}
+		if previousNode, exists := previous[next.Agents[index].ID]; !exists || previousNode != next.Agents[index] {
+			worldChanged = true
 		}
 	}
 	for _, thread := range tree.Threads {
-		if source.tails[thread.ID] != nil || thread.RolloutPath == "" {
+		if thread.RolloutPath == "" {
+			continue
+		}
+		if existing := source.tails[thread.ID]; existing != nil && existing.path == thread.RolloutPath {
 			continue
 		}
 		tail, err := openJSONLTail(thread.RolloutPath, true)
@@ -174,9 +195,25 @@ func (source *observerSource) poll() (bool, error) {
 		if tail == nil {
 			continue
 		}
-		records, _, err := tail.poll()
+		records, diagnostics, err := tail.poll()
 		if err != nil {
+			if errors.Is(err, os.ErrNotExist) && terminalLifecycle(node.LifecycleState) {
+				delete(source.tails, node.ID)
+				continue
+			}
 			return changed, fmt.Errorf("poll thread %s: %w", node.ID, err)
+		}
+		if diagnostics.GenerationChanges > 0 {
+			rebuilt, _, identified, inspectErr := inspectRolloutMetadata(tail.path)
+			if inspectErr != nil {
+				return changed, fmt.Errorf("rebuild thread %s: %w", node.ID, inspectErr)
+			}
+			if identified && rebuilt.ID == node.ID {
+				rebuilt.Agent.ParentID = node.ParentID
+				*node = rebuilt.Agent
+				activityChanged = true
+				continue
+			}
 		}
 		for _, record := range records {
 			if reduceRolloutActivity(node, record) {
@@ -188,6 +225,10 @@ func (source *observerSource) poll() (bool, error) {
 		source.revision++
 	}
 	return changed || activityChanged, nil
+}
+
+func terminalLifecycle(lifecycle string) bool {
+	return lifecycle == "completed" || lifecycle == "interrupted" || lifecycle == "failed"
 }
 
 func (source *observerSource) forceDiscoveryOnNextPoll() {

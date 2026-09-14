@@ -42,5 +42,5 @@ Original prompt: 建立 codex-village，以空間化世界即時視覺化 Codex 
 - Spawned three review agents after restarting the updated Observer server; the selected tree grew to seven agents (root, three earlier completed workers, and three active reviewers).
 - Playwright captured three consecutive frames. Human inspection confirmed worker entry movement, reasoning rings, tool hammer animation, completion markers, parent paths, and a clean console.
 - Completed review priority: Observer polling is decoupled from WebSocket clients into one process-owned loop; attention/failure/delegation normalization and nested spatial layout are complete.
-- Observer hardening still needs archive/rename handling, per-generation contribution rebuild, inherited-history boundaries, and bounded metadata discovery.
+- Observer P0 file lifecycle acceptance is complete: archived moves are rediscovered, completed missing tails retire cleanly, and replacement generations rebuild their contribution. Inherited-history boundaries and bounded metadata discovery remain later hardening work.
 - Product spec needs separate Observer V1 versus full-product Definition of Done, plus one canonical HTTP API naming scheme.
