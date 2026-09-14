@@ -48,13 +48,15 @@ func reduceRolloutActivity(node *AgentNode, record json.RawMessage) bool {
 	case "event_msg/turn_aborted":
 		setAgentActivity(node, "interrupted", "unknown", "idle")
 		node.AttentionState = "none"
-	case "event_msg/task_failed", "event_msg/turn_failed":
+	case "event_msg/error", "event_msg/task_failed", "event_msg/turn_failed":
 		setAgentActivity(node, "failed", "unknown", "idle")
 		node.AttentionState = "none"
 	case "event_msg/request_user_input", "event_msg/waiting_for_input":
 		setAgentActivity(node, "waiting", "unknown", "idle")
 		node.AttentionState = "waiting_for_input"
-	case "event_msg/approval_request", "event_msg/waiting_for_approval":
+	case "event_msg/approval_request", "event_msg/waiting_for_approval",
+		"event_msg/exec_approval_request", "event_msg/apply_patch_approval_request",
+		"event_msg/request_permissions":
 		setAgentActivity(node, "waiting", "tool", "idle")
 		node.AttentionState = "waiting_for_approval"
 	case "event_msg/sub_agent_activity":
